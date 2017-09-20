@@ -40,6 +40,10 @@
 #include "options/path.h"
 #include "player/client.h"
 
+#ifdef HAVE_SD_LIBRARY
+#include <systemd/sd-daemon.h>
+#endif
+
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
 #endif
@@ -288,7 +292,7 @@ static void *ipc_thread(void *p)
 {
     int rc;
 
-    int ipc_fd;
+    int ipc_fd = -1;
     struct sockaddr_un ipc_un = {0};
 
     struct mp_ipc_ctx *arg = p;
@@ -296,6 +300,22 @@ static void *ipc_thread(void *p)
     mpthread_set_name("ipc socket listener");
 
     MP_VERBOSE(arg, "Starting IPC master\n");
+
+#ifdef HAVE_SD_LIBRARY
+    int fd_num = sd_listen_fds(0);
+    if (fd_num > 1) {
+        MP_ERR(arg, "Too many IPC socket file descriptors received\n");
+        goto done;
+    }
+
+    if (fd_num == 1) {
+        ipc_fd = SD_LISTEN_FDS_START + 0;
+        if (ipc_fd < 0) {
+            MP_ERR(arg, "Could not create IPC socket\n");
+            goto done;
+        }
+    } else {
+#endif
 
     ipc_fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (ipc_fd < 0) {
@@ -335,6 +355,9 @@ static void *ipc_thread(void *p)
         MP_ERR(arg, "Could not listen on IPC socket\n");
         goto done;
     }
+#ifdef HAVE_SD_LIBRARY
+    }
+#endif
 
     MP_VERBOSE(arg, "Listening to IPC socket.\n");
 

@@ -389,6 +389,11 @@ iconv support use --disable-iconv.",
         'desc': 'libarchive wrapper for reading zip files and more',
         'func': check_pkg_config('libarchive >= 3.0.0'),
         'default': 'disable',
+    }, {
+        'name': '--sd-library',
+        'desc': 'systemd library for socket activation',
+        'deps': '!(os-win32 || os-cygwin)',
+        'func': check_cc(lib=['systemd'], header_name=['systemd/sd-daemon.h']),
     }
 ]
 
