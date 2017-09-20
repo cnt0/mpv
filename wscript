@@ -392,7 +392,7 @@ iconv support use --disable-iconv.",
     }, {
         'name': '--sd-library',
         'desc': 'systemd library for socket activation',
-        'deps': '!(os-win32 || os-cygwin)',
+        'deps': 'os-linux',
         'func': check_cc(lib=['systemd'], header_name=['systemd/sd-daemon.h']),
     }
 ]
