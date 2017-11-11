@@ -510,8 +510,8 @@ setting them to *no*. Even suboptions can be specified in this way.
 
     ::
 
-        # Use opengl video output by default.
-        vo=opengl
+        # Use GPU-accelerated video output by default.
+        vo=gpu
         # Use quotes for text that can contain spaces:
         status-msg="Time: ${time-pos}"
 
@@ -582,7 +582,7 @@ profile name ``default`` to continue with normal options.
         [slow]
         profile-desc="some profile name"
         # reference a builtin profile
-        profile=opengl-hq
+        profile=gpu-hq
 
         [fast]
         vo=vdpau
@@ -876,6 +876,8 @@ works like in older mpv releases. The profiles are currently defined as follows:
 .. include:: input.rst
 
 .. include:: osc.rst
+
+.. include:: stats.rst
 
 .. include:: lua.rst
 

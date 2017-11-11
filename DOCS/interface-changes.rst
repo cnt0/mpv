@@ -20,8 +20,32 @@ Interface changes
 ::
 
  --- mpv 0.28.0 ---
+    - rename --hwdec=mediacodec option to mediacodec-copy, to reflect
+      conventions followed by other hardware video decoding APIs
     - drop previously deprecated --heartbeat-cmd and --heartbeat--interval
       options
+    - rename --vo=opengl to --vo=gpu
+    - rename --opengl-backend to --gpu-context
+    - rename --opengl-shaders to --glsl-shaders
+    - rename --opengl-shader-cache-dir to --gpu-shader-cache-dir
+    - rename --opengl-tex-pad-x/y to --gpu-tex-pad-x/y
+    - rename --opengl-fbo-format to --fbo-format
+    - rename --opengl-gamma to --gamma-factor
+    - rename --opengl-debug to --gpu-debug
+    - rename --opengl-sw to --gpu-sw
+    - rename --opengl-vsync-fences to --swapchain-depth, and the interpretation
+      slightly changed. Now defaults to 3.
+    - rename the built-in profile `opengl-hq` to `gpu-hq`
+    - the semantics of --opengl-es=yes are slightly changed -> now requires GLES
+    - remove the (deprecated) alias --gpu-context=drm-egl
+    - remove the (deprecated) --vo=opengl-hq
+    - remove --opengl-es=force2 (use --opengl-es=yes --opengl-restrict=300)
+    - the --msg-level option now affects --log-file
+    - drop "audio-out-detected-device" property - this was unavailable on all
+      audio output drivers for quite a while (coreaudio used to provide it)
+    - deprecate --videotoolbox-format (use --hwdec-image-format, which affects
+      most other hwaccels)
+    - remove deprecated --demuxer-max-packets
  --- mpv 0.27.0 ---
     - drop previously deprecated --field-dominance option
     - drop previously deprecated "osd" command

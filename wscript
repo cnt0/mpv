@@ -27,6 +27,21 @@ Dependency identifiers (for win32 vs. Unix):
 
 build_options = [
     {
+        'name': '--lgpl',
+        'desc': 'LGPL (version 2.1 or later) build',
+        'default': 'disable',
+        'func': check_true,
+    }, {
+        'name': 'gpl',
+        'desc': 'GPL (version 2 or later) build',
+        'deps': '!lgpl',
+        'func': check_true,
+    }, {
+        'name': 'libaf',
+        'desc': 'internal audio filter chain',
+        'deps': 'gpl',
+        'func': check_true,
+    }, {
         'name': '--cplayer',
         'desc': 'mpv CLI player',
         'default': 'enable',
@@ -138,7 +153,11 @@ main_dependencies = [
     }, {
         'name': '--android',
         'desc': 'Android environment',
-        'func': check_statement('android/api-level.h', '(void)__ANDROID__'),  # arbitrary android-specific header
+        'func': compose_checks(
+            check_statement('android/api-level.h', '(void)__ANDROID__'),  # arbitrary android-specific header
+            check_cc(lib="android"),
+            check_cc(lib="EGL"),
+        )
     }, {
         'name': 'posix-or-mingw',
         'desc': 'development environment',
@@ -157,7 +176,7 @@ main_dependencies = [
         'name': 'win32-desktop',
         'desc': 'win32 desktop APIs',
         'deps': '(os-win32 || os-cygwin) && !uwp',
-        'func': check_cc(lib=['winmm', 'gdi32', 'ole32', 'uuid', 'avrt', 'dwmapi']),
+        'func': check_cc(lib=['winmm', 'gdi32', 'ole32', 'uuid', 'avrt', 'dwmapi', 'version']),
     }, {
         'name': '--win32-internal-pthreads',
         'desc': 'internal pthread wrapper for win32 (Vista+)',
@@ -218,11 +237,21 @@ iconv support use --disable-iconv.",
         'desc': 'nanosleep',
         'func': check_statement('time.h', 'nanosleep(0,0)')
     }, {
-        'name': 'posix-spawn',
-        'desc': 'POSIX spawnp()/kill()',
+        'name': 'posix-spawn-native',
+        'desc': 'spawnp()/kill() POSIX support',
         'func': check_statement(['spawn.h', 'signal.h'],
             'posix_spawnp(0,0,0,0,0,0); kill(0,0)'),
         'deps': '!mingw',
+    }, {
+        'name': 'posix-spawn-android',
+        'desc': 'spawnp()/kill() Android replacement',
+        'func': check_true,
+        'deps': 'android && !posix-spawn-native',
+    },{
+        'name': 'posix-spawn',
+        'desc': 'any spawnp()/kill() support',
+        'deps': 'posix-spawn-native || posix-spawn-android',
+        'func': check_true,
     }, {
         'name': 'win32-pipes',
         'desc': 'Windows pipe support',
@@ -289,7 +318,7 @@ iconv support use --disable-iconv.",
     }, {
         'name': '--libsmbclient',
         'desc': 'Samba support (makes mpv GPLv3)',
-        'deps': 'libdl',
+        'deps': 'libdl && gpl',
         'func': check_pkg_config('smbclient'),
         'default': 'disable',
         'module': 'input',
@@ -338,22 +367,25 @@ iconv support use --disable-iconv.",
     }, {
         'name': '--dvdread',
         'desc': 'dvdread support',
+        'deps': 'gpl',
         'func': check_pkg_config('dvdread', '>= 4.1.0'),
         'default': 'disable',
     }, {
         'name': '--dvdnav',
         'desc': 'dvdnav support',
+        'deps': 'gpl',
         'func': check_pkg_config('dvdnav',  '>= 4.2.0',
                                  'dvdread', '>= 4.1.0'),
         'default': 'disable',
     }, {
         'name': 'dvdread-common',
         'desc': 'DVD/IFO support',
-        'deps': 'dvdread || dvdnav',
+        'deps': 'gpl && (dvdread || dvdnav)',
         'func': check_true,
     }, {
         'name': '--cdda',
         'desc': 'cdda support (libcdio)',
+        'deps': 'gpl',
         'func': check_pkg_config('libcdio_paranoia'),
         'default': 'disable',
     }, {
@@ -364,6 +396,7 @@ iconv support use --disable-iconv.",
     }, {
         'name': '--rubberband',
         'desc': 'librubberband support',
+        'deps': 'libaf',
         'func': check_pkg_config('rubberband', '>= 1.8.0'),
     }, {
         'name': '--lcms2',
@@ -397,31 +430,27 @@ iconv support use --disable-iconv.",
     }
 ]
 
-ffmpeg_version = "3.2.2"
 ffmpeg_pkg_config_checks = [
-    'libavutil',     '>= 55.34.100',
-    'libavcodec',    '>= 57.64.100',
-    'libavformat',   '>= 57.56.100',
-    'libswscale',    '>= 4.2.100',
-    'libavfilter',   '>= 6.65.100',
-    'libswresample', '>= 2.3.100',
+    'libavutil',     '>= 56.0.100',
+    'libavcodec',    '>= 58.2.100',
+    'libavformat',   '>= 58.0.102',
+    'libswscale',    '>= 5.0.101',
+    'libavfilter',   '>= 7.0.101',
+    'libswresample', '>= 3.0.100',
 ]
-libav_version = "12"
 libav_pkg_config_checks = [
-    'libavutil',     '>= 55.20.0',
-    'libavcodec',    '>= 57.25.0',
-    'libavformat',   '>= 57.7.0',
-    'libswscale',    '>= 4.0.0',
-    'libavfilter',   '>= 6.7.0',
-    'libavresample', '>= 3.0.0',
+    'libavutil',     '>= 56.6.0',
+    'libavcodec',    '>= 58.5.0',
+    'libavformat',   '>= 58.1.0',
+    'libswscale',    '>= 5.0.0',
+    'libavfilter',   '>= 7.0.0',
+    'libavresample', '>= 4.0.0',
 ]
-
-libav_versions_string = "FFmpeg %s or Libav %s" % (ffmpeg_version, libav_version)
 
 def check_ffmpeg_or_libav_versions():
     def fn(ctx, dependency_identifier, **kw):
         versions = ffmpeg_pkg_config_checks
-        if ctx.dependency_satisfied('is_libav'):
+        if ctx.dependency_satisfied('libav'):
             versions = libav_pkg_config_checks
         return check_pkg_config(*versions)(ctx, dependency_identifier, **kw)
     return fn
@@ -434,59 +463,45 @@ libav_dependencies = [
         'req': True,
         'fmsg': "FFmpeg/Libav development files not found.",
     }, {
-        'name': 'is_ffmpeg',
-        'desc': 'libav* is FFmpeg',
+        'name': 'ffmpeg-mpv',
+        'desc': 'libav* is FFmpeg mpv modified version',
+        'func': check_statement('libavcodec/version.h',
+                                'int x[LIBAVCODEC_MPV ? 1 : -1]',
+                                use='libavcodec')
+    }, {
+        'name': '--ffmpeg-upstream',
+        'deps': '!ffmpeg-mpv',
+        'desc': 'libav* is upstream FFmpeg (unsupported)',
         # FFmpeg <=> LIBAVUTIL_VERSION_MICRO>=100
         'func': check_statement('libavcodec/version.h',
                                 'int x[LIBAVCODEC_VERSION_MICRO >= 100 ? 1 : -1]',
-                                use='libavcodec')
+                                use='libavcodec'),
+        'default': 'disable',
     }, {
-        # This check should always result in the opposite of is_ffmpeg.
+        # This check should always result in the opposite of ffmpeg-*.
         # Run it to make sure is_ffmpeg didn't fail for some other reason than
         # the actual version check.
-        'name': 'is_libav',
+        'name': 'libav',
         'desc': 'libav* is Libav',
         # FFmpeg <=> LIBAVUTIL_VERSION_MICRO>=100
         'func': check_statement('libavcodec/version.h',
                                 'int x[LIBAVCODEC_VERSION_MICRO >= 100 ? -1 : 1]',
                                 use='libavcodec')
     }, {
-        'name': 'libav',
+        'name': 'libav-any',
         'desc': 'Libav/FFmpeg library versions',
-        'deps': 'is_ffmpeg || is_libav',
+        'deps': 'ffmpeg-mpv || ffmpeg-upstream || libav',
         'func': check_ffmpeg_or_libav_versions(),
         'req': True,
         'fmsg': "Unable to find development files for some of the required \
-FFmpeg/Libav libraries. You need at least {0}. Aborting.".format(libav_versions_string)
+FFmpeg/Libav libraries. You need git master. For FFmpeg, the mpv fork, that \
+might contain additional fixes and features is required. It is available on \
+https://github.com/mpv-player/ffmpeg-mpv Aborting."
     }, {
         'name': '--libavdevice',
         'desc': 'libavdevice',
         'func': check_pkg_config('libavdevice', '>= 57.0.0'),
-    }, {
-        'name': 'avutil-imgcpy-uc',
-        'desc': 'libavutil GPU memcpy for hardware decoding',
-        'func': check_statement('libavutil/imgutils.h',
-                                'av_image_copy_uc_from(0,0,0,0,0,0,0)',
-                                use='libav'),
-    }, {
-        'name': 'avutil-content-light-level',
-        'desc': 'libavutil content light level struct',
-        'func': check_statement('libavutil/frame.h',
-                                'AV_FRAME_DATA_CONTENT_LIGHT_LEVEL',
-                                use='libav'),
-    }, {
-        'name': 'avutil-icc-profile',
-        'desc': 'libavutil ICC profile side data',
-        'func': check_statement('libavutil/frame.h',
-                                'AV_FRAME_DATA_ICC_PROFILE',
-                                use='libav'),
-    }, {
-        'name': 'avutil-spherical',
-        'desc': 'libavutil spherical side data',
-        'func': check_statement('libavutil/spherical.h',
-                                'AV_SPHERICAL_EQUIRECTANGULAR',
-                                use='libav'),
-    },
+    }
 ]
 
 audio_output_features = [
@@ -505,7 +520,7 @@ audio_output_features = [
         'name': '--oss-audio',
         'desc': 'OSS',
         'func': check_cc(header_name='sys/soundcard.h'),
-        'deps': 'posix',
+        'deps': 'posix && gpl',
     }, {
         'name': '--rsound',
         'desc': 'RSound audio output',
@@ -523,6 +538,7 @@ audio_output_features = [
     }, {
         'name': '--jack',
         'desc': 'JACK audio output',
+        'deps': 'gpl',
         'func': check_pkg_config('jack'),
     }, {
         'name': '--openal',
@@ -536,6 +552,7 @@ audio_output_features = [
     }, {
         'name': '--alsa',
         'desc': 'ALSA audio output',
+        'deps': 'gpl',
         'func': check_pkg_config('alsa', '>= 1.0.18'),
     }, {
         'name': '--coreaudio',
@@ -569,19 +586,34 @@ video_output_features = [
         'deps': 'vt.h',
         'func': check_pkg_config('libdrm'),
     }, {
+        'name': '--drmprime',
+        'desc': 'DRM Prime ffmpeg support',
+        'func': check_statement('libavutil/pixfmt.h',
+                                'int i = AV_PIX_FMT_DRM_PRIME')
+    }, {
         'name': '--gbm',
         'desc': 'GBM',
         'deps': 'gbm.h',
         'func': check_pkg_config('gbm'),
     } , {
+        'name': '--wayland-scanner',
+        'desc': 'wayland-scanner',
+        'func': check_program('wayland-scanner', 'WAYSCAN')
+    } , {
+        'name': '--wayland-protocols',
+        'desc': 'wayland-protocols',
+        'func': check_wl_protocols
+    } , {
         'name': '--wayland',
         'desc': 'Wayland',
+        'deps': 'wayland-protocols && wayland-scanner',
         'func': check_pkg_config('wayland-client', '>= 1.6.0',
                                  'wayland-cursor', '>= 1.6.0',
                                  'xkbcommon',      '>= 0.3.0'),
     } , {
         'name': '--x11',
         'desc': 'X11',
+        'deps': 'gpl',
         'func': check_pkg_config('x11',         '>= 1.0.0',
                                  'xscrnsaver',  '>= 1.0.0',
                                  'xext',        '>= 1.0.0',
@@ -699,7 +731,7 @@ video_output_features = [
     }, {
         'name': '--vaapi-glx',
         'desc': 'VAAPI GLX',
-        'deps': 'vaapi-x11 && gl-x11',
+        'deps': 'gpl && vaapi-x11 && gl-x11',
         'func': check_true,
     }, {
         'name': '--vaapi-x-egl',
@@ -714,6 +746,7 @@ video_output_features = [
     }, {
         'name': '--caca',
         'desc': 'CACA',
+        'deps': 'gpl',
         'func': check_pkg_config('caca', '>= 0.99.beta18'),
     }, {
         'name': '--jpeg',
@@ -723,8 +756,21 @@ video_output_features = [
     }, {
         'name': '--direct3d',
         'desc': 'Direct3D support',
-        'deps': 'win32-desktop',
+        'deps': 'win32-desktop && gpl',
         'func': check_cc(header_name='d3d9.h'),
+    }, {
+        'name': '--shaderc',
+        'desc': 'libshaderc SPIR-V compiler',
+        'func': check_cc(header_name='shaderc/shaderc.h', lib='shaderc_shared'),
+    }, {
+        'name': '--crossc',
+        'desc': 'libcrossc SPIR-V translator',
+        'func': check_pkg_config('crossc'),
+    }, {
+        'name': '--d3d11',
+        'desc': 'Direct3D 11 video output',
+        'deps': 'win32-desktop && shaderc && crossc',
+        'func': check_cc(header_name=['d3d11_1.h', 'dxgi1_2.h']),
     }, {
         # We need MMAL/bcm_host/dispmanx APIs. Also, most RPI distros require
         # every project to hardcode the paths to the include directories. Also,
@@ -765,7 +811,7 @@ video_output_features = [
         ),
     }, {
         'name': '--gl',
-        'desc': 'OpenGL video outputs',
+        'desc': 'OpenGL context support',
         'deps': 'gl-cocoa || gl-x11 || egl-x11 || egl-drm || '
                  + 'gl-win32 || gl-wayland || rpi || mali-fbdev || '
                  + 'plain-gl',
@@ -773,50 +819,25 @@ video_output_features = [
         'req': True,
         'fmsg': "No OpenGL video output found or enabled. " +
                 "Aborting. If you really mean to compile without OpenGL " +
-                "video outputs use --disable-gl."
+                "video outputs use --disable-gl.",
+    }, {
+        'name': '--vulkan',
+        'desc':  'Vulkan context support',
+        'func': check_pkg_config('vulkan'),
     }, {
         'name': 'egl-helpers',
         'desc': 'EGL helper functions',
         'deps': 'egl-x11 || mali-fbdev || rpi || gl-wayland || egl-drm || ' +
-                'egl-angle-win32',
+                'egl-angle-win32 || android',
         'func': check_true
     }
 ]
 
 hwaccel_features = [
     {
-        'name': '--vaapi-hwaccel',
-        'desc': 'libavcodec VAAPI hwaccel (FFmpeg 3.3 API)',
-        'deps': 'vaapi',
-        'func': check_statement('libavcodec/version.h',
-            'int x[(LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 26, 0) && '
-            '       LIBAVCODEC_VERSION_MICRO < 100) ||'
-            '      (LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 74, 100) && '
-            '       LIBAVCODEC_VERSION_MICRO >= 100)'
-            '      ? 1 : -1]',
-            use='libav'),
-    }, {
-        'name': '--videotoolbox-hwaccel-new',
-        'desc': 'libavcodec videotoolbox hwaccel (new API)',
-        'deps': 'gl-cocoa || ios-gl',
-        'func': check_statement('libavcodec/version.h',
-            'int x[(LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 96, 100) && '
-            '       LIBAVCODEC_VERSION_MICRO >= 100)'
-            '      ? 1 : -1]',
-            use='libav'),
-    }, {
-        'name': '--videotoolbox-hwaccel-old',
-        'desc': 'libavcodec videotoolbox hwaccel (old API)',
-        'deps': '(gl-cocoa || ios-gl) && !videotoolbox-hwaccel-new',
-        'func': compose_checks(
-            check_headers('VideoToolbox/VideoToolbox.h'),
-            check_statement('libavcodec/videotoolbox.h',
-                            'av_videotoolbox_alloc_context()',
-                            use='libav')),
-    }, {
         'name': 'videotoolbox-hwaccel',
         'desc': 'libavcodec videotoolbox hwaccel',
-        'deps': 'videotoolbox-hwaccel-new || videotoolbox-hwaccel-old',
+        'deps': 'gl-cocoa || ios-gl',
         'func': check_true,
     }, {
         'name': '--videotoolbox-gl',
@@ -824,33 +845,11 @@ hwaccel_features = [
         'deps': 'gl-cocoa && videotoolbox-hwaccel',
         'func': check_true
     }, {
-        'name': '--vdpau-hwaccel',
-        'desc': 'libavcodec VDPAU hwaccel (FFmpeg 3.3 API)',
-        'deps': 'vdpau',
-        'func': check_statement('libavcodec/version.h',
-            'int x[(LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 37, 1) && '
-            '       LIBAVCODEC_VERSION_MICRO < 100) ||'
-            '      (LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 85, 101) && '
-            '       LIBAVCODEC_VERSION_MICRO >= 100)'
-            '      ? 1 : -1]',
-            use='libav'),
-    }, {
         # (conflated with ANGLE for easier deps)
         'name': '--d3d-hwaccel',
         'desc': 'D3D11VA hwaccel (plus ANGLE)',
         'deps': 'os-win32 && egl-angle',
         'func': check_true,
-    }, {
-        'name': '--d3d-hwaccel-new',
-        'desc': 'D3D11VA hwaccel (new API)',
-        'func': check_statement('libavcodec/version.h',
-            'int x[(LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(58, 4, 0) && '
-            '       LIBAVCODEC_VERSION_MICRO < 100) ||'
-            '      (LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 100, 100) && '
-            '       LIBAVCODEC_VERSION_MICRO >= 100)'
-            '      ? 1 : -1]',
-            use='libav'),
-        'deps': 'd3d-hwaccel',
     }, {
         'name': '--d3d9-hwaccel',
         'desc': 'DXVA2 hwaccel (plus ANGLE)',
@@ -867,12 +866,7 @@ hwaccel_features = [
         'desc': 'CUDA hwaccel',
         'deps': 'gl',
         'func': check_cc(fragment=load_fragment('cuda.c'),
-                         use='libav'),
-    }, {
-        'name': 'sse4-intrinsics',
-        'desc': 'GCC SSE4 intrinsics for GPU memcpy',
-        'deps': 'd3d-hwaccel && !d3d-hwaccel-new',
-        'func': check_cc(fragment=load_fragment('sse.c')),
+                         use='libavcodec'),
     }
 ]
 
@@ -880,6 +874,7 @@ radio_and_tv_features = [
     {
         'name': '--tv',
         'desc': 'TV interface',
+        'deps': 'gpl',
         'func': check_true,
         'default': 'disable',
     }, {
@@ -910,6 +905,7 @@ radio_and_tv_features = [
     } , {
         'name': '--dvbin',
         'desc': 'DVB input module',
+        'deps': 'gpl',
         'func': check_true,
         'default': 'disable',
     }

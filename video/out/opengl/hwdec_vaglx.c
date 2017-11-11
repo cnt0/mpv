@@ -25,9 +25,15 @@
 #include <va/va_x11.h>
 
 #include "video/out/x11_common.h"
-#include "ra_gl.h"
-#include "hwdec.h"
+#include "video/out/gpu/hwdec.h"
 #include "video/vaapi.h"
+
+#include "ra_gl.h"
+
+#include "config.h"
+#if !HAVE_GPL
+#error GPL only
+#endif
 
 struct priv_owner {
     struct mp_vaapi_ctx *ctx;

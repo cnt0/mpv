@@ -55,8 +55,7 @@ typedef struct mp_vo_opts {
     // vo_opengl, vo_opengl_cb
     char *gl_hwdec_interop;
     // vo_drm
-    char *drm_connector_spec;
-    int drm_mode_id;
+    struct drm_opts *drm_opts;
 } mp_vo_opts;
 
 struct mp_cache_opts {
@@ -90,6 +89,7 @@ typedef struct MPOpts {
     int lua_load_ytdl;
     char *lua_ytdl_format;
     char **lua_ytdl_raw_options;
+    int lua_load_stats;
 
     int auto_load_scripts;
 
@@ -291,6 +291,7 @@ typedef struct MPOpts {
     int hwdec_api;
     char *hwdec_codecs;
     int videotoolbox_format;
+    int hwdec_image_format;
 
     int w32_priority;
 
@@ -328,6 +329,11 @@ typedef struct MPOpts {
 
     struct gl_video_opts *gl_video_opts;
     struct angle_opts *angle_opts;
+    struct opengl_opts *opengl_opts;
+    struct vulkan_opts *vulkan_opts;
+    struct spirv_opts *spirv_opts;
+    struct d3d11_opts *d3d11_opts;
+    struct d3d11va_opts *d3d11va_opts;
     struct cocoa_opts *cocoa_opts;
     struct dvd_opts *dvd_opts;
 

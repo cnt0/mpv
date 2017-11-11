@@ -57,8 +57,8 @@
 #include "video/out/vo.h"
 #include "video/csputils.h"
 #include "audio/aframe.h"
+#include "audio/format.h"
 #include "audio/out/ao.h"
-#include "audio/filter/af.h"
 #include "video/decode/dec_video.h"
 #include "audio/decode/dec_audio.h"
 #include "video/out/bitmap_packer.h"
@@ -70,6 +70,10 @@
 #include "osdep/subprocess.h"
 
 #include "core.h"
+
+#if HAVE_LIBAF
+#include "audio/filter/af.h"
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -1455,10 +1459,12 @@ static int mp_property_filter_metadata(void *ctx, struct m_property *prop,
             struct vf_chain *vf = mpctx->vo_chain->vf;
             res = vf_control_by_label(vf, VFCTRL_GET_METADATA, &metadata, key);
         } else if (strcmp(type, "af") == 0) {
+#if HAVE_LIBAF
             if (!(mpctx->ao_chain && mpctx->ao_chain->af))
                 return M_PROPERTY_UNAVAILABLE;
             struct af_stream *af = mpctx->ao_chain->af;
             res = af_control_by_label(af, AF_CONTROL_GET_METADATA, &metadata, key);
+#endif
         }
         switch (res) {
         case CONTROL_UNKNOWN:
@@ -1690,11 +1696,10 @@ static int mp_property_demuxer_cache_time(void *ctx, struct m_property *prop,
     if (demux_control(mpctx->demuxer, DEMUXER_CTRL_GET_READER_STATE, &s) < 1)
         return M_PROPERTY_UNAVAILABLE;
 
-    double ts = s.ts_range[1];
-    if (ts == MP_NOPTS_VALUE)
+    if (s.ts_end == MP_NOPTS_VALUE)
         return M_PROPERTY_UNAVAILABLE;
 
-    return m_property_double_ro(action, arg, ts);
+    return m_property_double_ro(action, arg, s.ts_end);
 }
 
 static int mp_property_demuxer_cache_idle(void *ctx, struct m_property *prop,
@@ -1709,6 +1714,51 @@ static int mp_property_demuxer_cache_idle(void *ctx, struct m_property *prop,
         return M_PROPERTY_UNAVAILABLE;
 
     return m_property_flag_ro(action, arg, s.idle);
+}
+
+static int mp_property_demuxer_cache_state(void *ctx, struct m_property *prop,
+                                           int action, void *arg)
+{
+    MPContext *mpctx = ctx;
+    if (!mpctx->demuxer)
+        return M_PROPERTY_UNAVAILABLE;
+
+    if (action == M_PROPERTY_GET_TYPE) {
+        *(struct m_option *)arg = (struct m_option){.type = CONF_TYPE_NODE};
+        return M_PROPERTY_OK;
+    }
+    if (action != M_PROPERTY_GET)
+        return M_PROPERTY_NOT_IMPLEMENTED;
+
+    struct demux_ctrl_reader_state s;
+    if (demux_control(mpctx->demuxer, DEMUXER_CTRL_GET_READER_STATE, &s) < 1)
+        return M_PROPERTY_UNAVAILABLE;
+
+    struct mpv_node *r = (struct mpv_node *)arg;
+    node_init(r, MPV_FORMAT_NODE_MAP, NULL);
+
+    struct mpv_node *ranges =
+        node_map_add(r, "seekable-ranges", MPV_FORMAT_NODE_ARRAY);
+    for (int n = 0; n < s.num_seek_ranges; n++) {
+        struct demux_seek_range *range = &s.seek_ranges[n];
+        struct mpv_node *sub = node_array_add(ranges, MPV_FORMAT_NODE_MAP);
+        node_map_add_double(sub, "start", range->start);
+        node_map_add_double(sub, "end", range->end);
+    }
+
+    if (s.ts_end != MP_NOPTS_VALUE)
+        node_map_add_double(r, "cache-end", s.ts_end);
+
+    if (s.ts_reader != MP_NOPTS_VALUE)
+        node_map_add_double(r, "reader-pts", s.ts_reader);
+
+    node_map_add_flag(r, "eof", s.eof);
+    node_map_add_flag(r, "underrun", s.underrun);
+    node_map_add_flag(r, "idle", s.idle);
+    node_map_add_int64(r, "total-bytes", s.total_bytes);
+    node_map_add_int64(r, "fw-bytes", s.fw_bytes);
+
+    return M_PROPERTY_OK;
 }
 
 static int mp_property_demuxer_start_time(void *ctx, struct m_property *prop,
@@ -1785,8 +1835,7 @@ static int mp_property_mixer_active(void *ctx, struct m_property *prop,
                                     int action, void *arg)
 {
     MPContext *mpctx = ctx;
-    struct ao_chain *ao_c = mpctx->ao_chain;
-    return m_property_flag_ro(action, arg, ao_c && ao_c->af->initialized > 0);
+    return m_property_flag_ro(action, arg, !!mpctx->ao);
 }
 
 /// Volume (RW)
@@ -1963,17 +2012,6 @@ static int mp_property_ao(void *ctx, struct m_property *p, int action, void *arg
     MPContext *mpctx = ctx;
     return m_property_strdup_ro(action, arg,
                                     mpctx->ao ? ao_get_name(mpctx->ao) : NULL);
-}
-
-static int mp_property_ao_detected_device(void *ctx,struct m_property *prop,
-                                          int action, void *arg)
-{
-    struct MPContext *mpctx = ctx;
-    struct command_ctx *cmd = mpctx->command_ctx;
-    create_hotplug(mpctx);
-
-    const char *d = ao_hotplug_get_detected_device(cmd->hotplug);
-    return m_property_strdup_ro(action, arg, d);
 }
 
 /// Audio delay (RW)
@@ -3944,6 +3982,7 @@ static const struct m_property mp_properties_base[] = {
     {"demuxer-cache-time", mp_property_demuxer_cache_time},
     {"demuxer-cache-idle", mp_property_demuxer_cache_idle},
     {"demuxer-start-time", mp_property_demuxer_start_time},
+    {"demuxer-cache-state", mp_property_demuxer_cache_state},
     {"cache-buffering-state", mp_property_cache_buffering},
     {"paused-for-cache", mp_property_paused_for_cache},
     {"demuxer-via-network", mp_property_demuxer_is_network},
@@ -3978,7 +4017,6 @@ static const struct m_property mp_properties_base[] = {
     {"audio-device", mp_property_audio_device},
     {"audio-device-list", mp_property_audio_devices},
     {"current-ao", mp_property_ao},
-    {"audio-out-detected-device", mp_property_ao_detected_device},
 
     // Video
     {"fullscreen", mp_property_fullscreen},
@@ -5491,11 +5529,13 @@ int run_command(struct MPContext *mpctx, struct mp_cmd *cmd, struct mpv_node *re
         return vf_send_command(mpctx->vo_chain->vf, cmd->args[0].v.s,
                                cmd->args[1].v.s, cmd->args[2].v.s);
 
+#if HAVE_LIBAF
     case MP_CMD_AF_COMMAND:
         if (!mpctx->ao_chain)
             return -1;
         return af_send_command(mpctx->ao_chain->af, cmd->args[0].v.s,
                                cmd->args[1].v.s, cmd->args[2].v.s);
+#endif
 
     case MP_CMD_SCRIPT_BINDING: {
         mpv_event_client_message event = {0};
@@ -5766,10 +5806,8 @@ void handle_command_updates(struct MPContext *mpctx)
 
     // This is a bit messy: ao_hotplug wakes up the player, and then we have
     // to recheck the state. Then the client(s) will read the property.
-    if (ctx->hotplug && ao_hotplug_check_update(ctx->hotplug)) {
+    if (ctx->hotplug && ao_hotplug_check_update(ctx->hotplug))
         mp_notify_property(mpctx, "audio-device-list");
-        mp_notify_property(mpctx, "audio-out-detected-device");
-    }
 }
 
 void mp_notify(struct MPContext *mpctx, int event, void *arg)

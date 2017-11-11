@@ -172,6 +172,8 @@ enum {
     VO_CAP_ROTATE90     = 1 << 0,
     // VO does framedrop itself (vo_vdpau). Untimed/encoding VOs never drop.
     VO_CAP_FRAMEDROP    = 1 << 1,
+    // VO does not support redraws (vo_mediacodec_embed).
+    VO_CAP_NOREDRAW     = 1 << 2,
 };
 
 #define VO_MAX_REQ_FRAMES 10
@@ -374,7 +376,7 @@ struct vo {
     struct vo_x11_state *x11;
     struct vo_w32_state *w32;
     struct vo_cocoa_state *cocoa;
-    struct vo_wayland_state *wayland;
+    struct vo_wayland_state *wl;
     struct mp_hwdec_devices *hwdec_devs;
     struct input_ctx *input_ctx;
     struct osd_state *osd;

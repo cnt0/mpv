@@ -4,7 +4,7 @@
  * mpv is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
- * version 3 of the License, or (at your option) any later version.
+ * version 2.1 of the License, or (at your option) any later version.
  *
  * mpv is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -13,13 +13,6 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with mpv.  If not, see <http://www.gnu.org/licenses/>.
- *
- * The parts making this file LGPL v3 (instead of v2.1 or later) are:
- *  84ec57750883 remove unused cache-prefill and create cache-seek-min that...
- *  9b0d8c680f63 cache min fill adjustment, based on patch by Jeremy Huddleston
- * (iive agreed to LGPL v3+ only. Jeremy agreed to LGPL v2.1 or later.)
- * Once these changes are not relevant to for copyright anymore (e.g. because
- * they have been removed), this file will change to LGPLv2.1+.
  */
 
 // Time in seconds the main thread waits for the cache thread. On wakeups, the
@@ -116,6 +109,7 @@ struct priv {
 
     // Owned by the cache thread
     stream_t *stream;       // "real" stream, used to read from the source media
+    int64_t bytes_until_wakeup; // wakeup cache thread after this many bytes
 
     // All the following members are shared between the threads.
     // You must lock the mutex to access them.
@@ -609,8 +603,17 @@ static int cache_fill_buffer(struct stream *cache, char *buffer, int max_len)
         }
     }
 
-    // wakeup the cache thread, possibly make it read more data ahead
-    pthread_cond_signal(&s->wakeup);
+    if (!s->eof) {
+        // wakeup the cache thread, possibly make it read more data ahead
+        // this is throttled to reduce excessive wakeups during normal reading
+        // (using the amount of bytes after which the cache thread most likely
+        // can actually read new data)
+        s->bytes_until_wakeup -= readb;
+        if (s->bytes_until_wakeup <= 0) {
+            s->bytes_until_wakeup = MPMAX(FILL_LIMIT, s->stream->read_chunk);
+            pthread_cond_signal(&s->wakeup);
+        }
+    }
     pthread_mutex_unlock(&s->mutex);
     return readb;
 }
@@ -655,6 +658,8 @@ static int cache_seek(stream_t *cache, int64_t pos)
             r = 1;
         }
     }
+
+    s->bytes_until_wakeup = 0;
 
     pthread_mutex_unlock(&s->mutex);
 

@@ -32,11 +32,10 @@
 #include <libavutil/hwcontext.h>
 #include <libavutil/hwcontext_cuda.h>
 
+#include "video/out/gpu/hwdec.h"
 #include "formats.h"
-#include "hwdec.h"
 #include "options/m_config.h"
 #include "ra_gl.h"
-#include "video.h"
 
 struct priv_owner {
     struct mp_hwdec_ctx hwctx;
@@ -161,7 +160,7 @@ static int cuda_init(struct ra_hwdec *hw)
         goto error;
 
     p->hwctx = (struct mp_hwdec_ctx) {
-        .type = HWDEC_CUDA,
+        .type = hw->driver->api,
         .ctx = p->decode_ctx,
         .av_device_ref = hw_device_ctx,
     };
@@ -327,7 +326,7 @@ static int mapper_map(struct ra_hwdec_mapper *mapper)
 }
 
 const struct ra_hwdec_driver ra_hwdec_cuda = {
-    .name = "cuda",
+    .name = "cuda-nvdec",
     .api = HWDEC_CUDA,
     .imgfmts = {IMGFMT_CUDA, 0},
     .priv_size = sizeof(struct priv_owner),
