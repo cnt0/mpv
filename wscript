@@ -224,19 +224,6 @@ iconv support use --disable-iconv.",
         'deps': 'os-win32 || os-cygwin',
         'func': check_true
     }, {
-        'name': '--termios',
-        'desc': 'termios',
-        'func': check_headers('termios.h', 'sys/termios.h'),
-    }, {
-        'name': '--shm',
-        'desc': 'shm',
-        'func': check_statement(['sys/types.h', 'sys/ipc.h', 'sys/shm.h'],
-            'shmget(0, 0, 0); shmat(0, 0, 0); shmctl(0, 0, 0)')
-    }, {
-        'name': 'nanosleep',
-        'desc': 'nanosleep',
-        'func': check_statement('time.h', 'nanosleep(0,0)')
-    }, {
         'name': 'posix-spawn-native',
         'desc': 'spawnp()/kill() POSIX support',
         'func': check_statement(['spawn.h', 'signal.h'],
@@ -432,7 +419,7 @@ iconv support use --disable-iconv.",
 
 ffmpeg_pkg_config_checks = [
     'libavutil',     '>= 56.0.100',
-    'libavcodec',    '>= 58.2.100',
+    'libavcodec',    '>= 58.6.102',
     'libavformat',   '>= 58.0.102',
     'libswscale',    '>= 5.0.101',
     'libavfilter',   '>= 7.0.101',
@@ -476,7 +463,6 @@ libav_dependencies = [
         'func': check_statement('libavcodec/version.h',
                                 'int x[LIBAVCODEC_VERSION_MICRO >= 100 ? 1 : -1]',
                                 use='libavcodec'),
-        'default': 'disable',
     }, {
         # This check should always result in the opposite of ffmpeg-*.
         # Run it to make sure is_ffmpeg didn't fail for some other reason than
@@ -552,7 +538,6 @@ audio_output_features = [
     }, {
         'name': '--alsa',
         'desc': 'ALSA audio output',
-        'deps': 'gpl',
         'func': check_pkg_config('alsa', '>= 1.0.18'),
     }, {
         'name': '--coreaudio',

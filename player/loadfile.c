@@ -895,7 +895,7 @@ static void open_demux_reentrant(struct MPContext *mpctx)
             if (done) {
                 MP_VERBOSE(mpctx, "Dropping finished prefetch of wrong URL.\n");
             } else {
-                MP_VERBOSE(mpctx, "Aborting onging prefetch of wrong URL.\n");
+                MP_VERBOSE(mpctx, "Aborting ongoing prefetch of wrong URL.\n");
             }
             cancel_open(mpctx);
         }
@@ -1060,7 +1060,7 @@ static int reinit_complex_filters(struct MPContext *mpctx, bool force_uninit)
     {
         if (mpctx->vo_chain) {
             if (mpctx->vo_chain->video_src) {
-                MP_ERR(mpctx, "Pad vo tries to connected to already used VO.\n");
+                MP_ERR(mpctx, "Pad vo tries to connect to already used VO.\n");
                 goto done;
             }
         } else {
@@ -1080,7 +1080,7 @@ static int reinit_complex_filters(struct MPContext *mpctx, bool force_uninit)
     {
         if (mpctx->ao_chain) {
             if (mpctx->ao_chain->audio_src) {
-                MP_ERR(mpctx, "Pad ao tries to connected to already used AO.\n");
+                MP_ERR(mpctx, "Pad ao tries to connect to already used AO.\n");
                 goto done;
             }
         } else {
@@ -1162,6 +1162,9 @@ static void play_current_file(struct MPContext *mpctx)
     mpctx->seek = (struct seek_params){ 0 };
 
     reset_playback_state(mpctx);
+
+    // let get_current_time() show 0 as start time (before playback_pts is set)
+    mpctx->last_seek_pts = 0.0;
 
     mpctx->playing = mpctx->playlist->current;
     if (!mpctx->playing || !mpctx->playing->filename)
@@ -1327,17 +1330,16 @@ reopen_file:
         goto terminate_playback;
     }
 
-    double startpos = rel_time_to_abs(mpctx, opts->play_start);
-    if (startpos == MP_NOPTS_VALUE && opts->chapterrange[0] > 0) {
-        double start = chapter_start_time(mpctx, opts->chapterrange[0] - 1);
-        if (start != MP_NOPTS_VALUE)
-            startpos = start;
-    }
-    if (startpos != MP_NOPTS_VALUE) {
-        if (!opts->rebase_start_time) {
-            startpos += mpctx->demuxer->start_time;
+    double play_start_pts = get_play_start_pts(mpctx);
+    if (play_start_pts != MP_NOPTS_VALUE) {
+        /*
+         * get_play_start_pts returns rebased values, but
+         * we want an un rebased value to feed to seeker.
+         */
+        if (!opts->rebase_start_time){
+            play_start_pts += mpctx->demuxer->start_time;
         }
-        queue_seek(mpctx, MPSEEK_ABSOLUTE, startpos, MPSEEK_DEFAULT, 0);
+        queue_seek(mpctx, MPSEEK_ABSOLUTE, play_start_pts, MPSEEK_DEFAULT, 0);
         execute_queued_seek(mpctx);
     }
 

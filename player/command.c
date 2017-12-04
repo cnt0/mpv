@@ -13,8 +13,6 @@
  *
  * You should have received a copy of the GNU Lesser General Public
  * License along with mpv.  If not, see <http://www.gnu.org/licenses/>.
- *
- * Parts under HAVE_GPL are licensed under GNU General Public License.
  */
 
 #include <stdlib.h>
@@ -837,7 +835,7 @@ static bool time_remaining(MPContext *mpctx, double *remaining)
     double len = get_time_length(mpctx);
     double playback = get_playback_time(mpctx);
 
-    if (playback == MP_NOPTS_VALUE)
+    if (playback == MP_NOPTS_VALUE || len <= 0)
         return false;
 
     *remaining = len - playback;
@@ -2102,35 +2100,6 @@ static int mp_property_audio_out_params(void *ctx, struct m_property *prop,
     return r;
 }
 
-/// Balance (RW)
-static int mp_property_balance(void *ctx, struct m_property *prop,
-                               int action, void *arg)
-{
-    MPContext *mpctx = ctx;
-
-    if (action == M_PROPERTY_PRINT) {
-        char **str = arg;
-        float bal = mpctx->opts->balance;
-        if (bal == 0.f)
-            *str = talloc_strdup(NULL, "center");
-        else if (bal == -1.f)
-            *str = talloc_strdup(NULL, "left only");
-        else if (bal == 1.f)
-            *str = talloc_strdup(NULL, "right only");
-        else {
-            unsigned right = (bal + 1.f) / 2.f * 100.f;
-            *str = talloc_asprintf(NULL, "left %d%%, right %d%%",
-                                   100 - right, right);
-        }
-        return M_PROPERTY_OK;
-    }
-
-    int r = mp_property_generic_option(mpctx, prop, action, arg);
-    if (action == M_PROPERTY_SET)
-        audio_update_balance(mpctx);
-    return r;
-}
-
 static struct track* track_next(struct MPContext *mpctx, enum stream_type type,
                                 int direction, struct track *track)
 {
@@ -2450,24 +2419,22 @@ static int mp_property_hwdec(void *ctx, struct m_property *prop,
     struct MPOpts *opts = mpctx->opts;
 
     if (action == M_PROPERTY_SET) {
-        int new = *(int *)arg;
+        char *new = *(char **)arg;
 
-        if (opts->hwdec_api == new)
+        if (strcmp(opts->hwdec_api, new) == 0)
             return M_PROPERTY_OK;
 
-        opts->hwdec_api = new;
+        talloc_free(opts->hwdec_api);
+        opts->hwdec_api = talloc_strdup(NULL, new);
 
         if (!vd)
             return M_PROPERTY_OK;
 
-        int current = -2;
-        video_vd_control(vd, VDCTRL_GET_HWDEC, &current);
-        if (current != opts->hwdec_api) {
-            video_vd_control(vd, VDCTRL_REINIT, NULL);
-            double last_pts = mpctx->last_vo_pts;
-            if (last_pts != MP_NOPTS_VALUE)
-                queue_seek(mpctx, MPSEEK_ABSOLUTE, last_pts, MPSEEK_EXACT, 0);
-        }
+        video_vd_control(vd, VDCTRL_REINIT, NULL);
+        double last_pts = mpctx->last_vo_pts;
+        if (last_pts != MP_NOPTS_VALUE)
+            queue_seek(mpctx, MPSEEK_ABSOLUTE, last_pts, MPSEEK_EXACT, 0);
+
         return M_PROPERTY_OK;
     }
     return mp_property_generic_option(mpctx, prop, action, arg);
@@ -2483,20 +2450,11 @@ static int mp_property_hwdec_current(void *ctx, struct m_property *prop,
     if (!vd)
         return M_PROPERTY_UNAVAILABLE;
 
-    switch (action) {
-    case M_PROPERTY_GET_TYPE: {
-        // Abuse another hwdec option to resolve the value names
-        struct m_property dummy = {.name = "hwdec"};
-        return mp_property_generic_option(mpctx, &dummy, action, arg);
-    }
-    case M_PROPERTY_GET: {
-        int current = HWDEC_NONE;
-        video_vd_control(vd, VDCTRL_GET_HWDEC, &current);
-        *(int *)arg = current;
-        return M_PROPERTY_OK;
-    }
-    }
-    return M_PROPERTY_NOT_IMPLEMENTED;
+    char *current = NULL;
+    video_vd_control(vd, VDCTRL_GET_HWDEC, &current);
+    if (!current)
+        current = "no";
+    return m_property_strdup_ro(action, arg, current);
 }
 
 static int mp_property_hwdec_interop(void *ctx, struct m_property *prop,
@@ -2506,14 +2464,10 @@ static int mp_property_hwdec_interop(void *ctx, struct m_property *prop,
     if (!mpctx->video_out || !mpctx->video_out->hwdec_devs)
         return M_PROPERTY_UNAVAILABLE;
 
-    struct mp_hwdec_ctx *hwctx =
-        hwdec_devices_get_first(mpctx->video_out->hwdec_devs);
-
-    const char *name = hwctx ? hwctx->driver_name : NULL;
-    if (!name && hwctx)
-        name = m_opt_choice_str(mp_hwdec_names, hwctx->type);
-
-    return m_property_strdup_ro(action, arg, name);
+    char *names = hwdec_devices_get_names(mpctx->video_out->hwdec_devs);
+    int res = m_property_strdup_ro(action, arg, names);
+    talloc_free(names);
+    return res;
 }
 
 /// Helper to set vo flags.
@@ -4013,7 +3967,6 @@ static const struct m_property mp_properties_base[] = {
     {"audio-params", mp_property_audio_params},
     {"audio-out-params", mp_property_audio_out_params},
     {"aid", mp_property_audio},
-    {"balance", mp_property_balance},
     {"audio-device", mp_property_audio_device},
     {"audio-device-list", mp_property_audio_devices},
     {"current-ao", mp_property_ao},
@@ -4169,7 +4122,7 @@ static const char *const *const mp_event_property_change[] = {
       "colormatrix-primaries", "video-aspect", "video-dec-params",
       "hwdec", "hwdec-current", "hwdec-interop"),
     E(MPV_EVENT_AUDIO_RECONFIG, "audio-format", "audio-codec", "audio-bitrate",
-      "samplerate", "channels", "audio", "volume", "mute", "balance",
+      "samplerate", "channels", "audio", "volume", "mute",
       "current-ao", "audio-codec-name", "audio-params",
       "audio-out-params", "volume-max", "mixer-active"),
     E(MPV_EVENT_SEEK, "seeking", "core-idle", "eof-reached"),
@@ -4363,7 +4316,6 @@ static const struct property_osd_display {
     { "ao-mute", "AO Mute" },
     { "audio-delay", "A-V delay" },
     { "audio", "Audio" },
-    { "balance", "Balance", .osd_progbar = OSD_BALANCE },
     // video
     { "panscan", "Panscan", .osd_progbar = OSD_PANSCAN },
     { "taskbar-progress", "Progress in taskbar" },
@@ -5002,8 +4954,6 @@ int run_command(struct MPContext *mpctx, struct mp_cmd *cmd, struct mpv_node *re
         break;
     }
 
-#if HAVE_GPL
-    // Possibly GPL due to 7a71da01d64374ce22b430590f3df32c881288bd.
     case MP_CMD_ADD:
     case MP_CMD_CYCLE:
     {
@@ -5033,14 +4983,12 @@ int run_command(struct MPContext *mpctx, struct mp_cmd *cmd, struct mpv_node *re
                 return -1;
             } else if (r <= 0) {
                 set_osd_msg(mpctx, osdl, osd_duration,
-                            "Failed to increment property '%s' by %g",
-                            property, s.inc);
+                        "Failed to change property '%s'", property);
                 return -1;
             }
         }
         break;
     }
-#endif
 
     case MP_CMD_MULTIPLY: {
         char *property = cmd->args[0].v.s;
@@ -5331,8 +5279,6 @@ int run_command(struct MPContext *mpctx, struct mp_cmd *cmd, struct mpv_node *re
         break;
     }
 
-#if HAVE_GPL
-    // Possibly GPL due to 2f376d1b39913e8ff4c4499e7cf7148ec331d4db.
     case MP_CMD_SUB_ADD:
     case MP_CMD_AUDIO_ADD: {
         if (!mpctx->playing)
@@ -5384,7 +5330,6 @@ int run_command(struct MPContext *mpctx, struct mp_cmd *cmd, struct mpv_node *re
             print_track_list(mpctx, "Track removed:");
         break;
     }
-#endif
 
     case MP_CMD_SUB_RELOAD:
     case MP_CMD_AUDIO_RELOAD: {

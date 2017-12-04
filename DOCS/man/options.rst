@@ -679,7 +679,7 @@ Video
     :vdpau:     requires ``--vo=gpu`` or ``--vo=vdpau`` (Linux only)
     :vdpau-copy: copies video back into system RAM (Linux with some GPUs only)
     :vaapi:     requires ``--vo=gpu`` or ``--vo=vaapi`` (Linux only)
-    :vaapi-copy: copies video back into system RAM (Linux with Intel GPUs only)
+    :vaapi-copy: copies video back into system RAM (Linux with some GPUs only)
     :videotoolbox: requires ``--vo=gpu`` (OS X 10.8 and up),
                    or ``--vo=opengl-cb`` (iOS 9.0 and up)
     :videotoolbox-copy: copies video back into system RAM (OS X 10.8 or iOS 9.0 and up)
@@ -714,8 +714,7 @@ Video
     will allow CPU processing with video filters.
 
     The ``vaapi`` mode, if used with ``--vo=gpu``, requires Mesa 11 and most
-    likely works with Intel GPUs only. It also requires the opengl EGL backend
-    (automatically used if available).
+    likely works with Intel GPUs only. It also requires the opengl EGL backend.
 
     The ``cuda`` and ``cuda-copy`` modes provides deinterlacing in the decoder
     which is useful as there is no other deinterlacing mechanism in the opengl
@@ -816,34 +815,33 @@ Video
         frame glitches or discoloration, and you have ``--hwdec`` turned on,
         the first thing you should try is disabling it.
 
-``--opengl-hwdec-interop=<name>``
-    This is useful for the ``gpu`` and ``opengl-cb`` VOs for creating the
-    hardware decoding OpenGL interop context, but without actually enabling
-    hardware decoding itself (like ``--hwdec`` does).
+``--gpu-hwdec-interop=<auto|all|no|name>``
+    This option is for troubleshooting hwdec interop issues. Since it's a
+    debugging option, its semantics may change at any time.
 
-    If set to an empty string (default), the ``--hwdec`` option is used.
+    This is useful for the ``gpu`` and ``opengl-cb`` VOs for selecting which
+    hwdec interop context to use exactly. Effectively it also can be used
+    to block loading of certain backends.
 
-    For ``gpu``, if set, do not create the interop context on demand, but
-    when the VO is created.
+    If set to ``auto`` (default), the behavior depends on the VO: for ``gpu``,
+    it does nothing, and the interop context is loaded on demand (when the
+    decoder probes for ``--hwdec`` support). For ``opengl-cb``, which has
+    has no on-demand loading, this is equivalent to ``all``.
 
-    For ``opengl-cb``, if set, load the interop context as soon as the OpenGL
-    context is created. Since ``opengl-cb`` has no on-demand loading, this
-    allows enabling hardware decoding at runtime at all, without having
-    to temporarily set the ``hwdec`` option just during OpenGL context
-    initialization with ``mpv_opengl_cb_init_gl()``.
+    The empty string is equivalent to ``auto``.
 
-    See ``--opengl-hwdec-interop=help`` for accepted values. This lists the
-    interop backend, with the ``--hwdec`` alias after it in ``[...]``. Consider
-    all values except the proper interop backend name, ``auto``, and ``no`` as
-    silently deprecated and subject to change. Also, if you use this in
-    application code (e.g. via libmpv), any value other than ``auto`` and ``no``
-    should be avoided, as backends can change.
+    If set to ``all``, it attempts to load all interop contexts at GL context
+    creation time.
 
-    Currently the option sets a single value. It is possible that the option
-    type changes to a list in the future.
+    Other than that, a specific backend can be set, and the list of them can
+    be queried with ``help`` (mpv CLI only).
 
-    The old alias ``--hwdec-preload`` has different behavior if the option value
-    is ``no``.
+    Runtime changes to this are ignored (the current option value is used
+    whenever the renderer is created).
+
+    The old aliases ``--opengl-hwdec-interop`` and ``--hwdec-preload`` are
+    barely related to this anymore, but will be somewhat compatible in some
+    cases.
 
 ``--hwdec-image-format=<name>``
     Set the internal pixel format used by hardware decoding via ``--hwdec``
@@ -947,8 +945,8 @@ Video
     rotation metadata.)
 
 ``--video-stereo-mode=<no|mode>``
-    Set the stereo 3D output mode (default: ``mono``). This is done by inserting
-    the ``stereo3d`` conversion filter.
+    Set the stereo 3D output mode (default: ``mono``). This is mostly broken and
+    thus deprecated.
 
     The pseudo-mode ``no`` disables automatic conversion completely.
 
@@ -1224,11 +1222,11 @@ Audio
     List of codecs for which compressed audio passthrough should be used. This
     works for both classic S/PDIF and HDMI.
 
-    Possible codecs are ``ac3``, ``dts``, ``dts-hd``. Multiple codecs can be
-    specified by separating them with ``,``. ``dts`` refers to low bitrate DTS
-    core, while ``dts-hd`` refers to DTS MA (receiver and OS support varies).
-    If both ``dts`` and ``dts-hd`` are specified, it behaves equivalent to
-    specifying ``dts-hd`` only.
+    Possible codecs are ``ac3``, ``dts``, ``dts-hd``, ``eac3``, ``truehd``.
+    Multiple codecs can be specified by separating them with ``,``. ``dts``
+    refers to low bitrate DTS core, while ``dts-hd`` refers to DTS MA (receiver
+    and OS support varies). If both ``dts`` and ``dts-hd`` are specified, it
+    behaves equivalent to specifying ``dts-hd`` only.
 
     In earlier mpv versions you could use ``--ad`` to force the spdif wrapper.
     This does not work anymore.
@@ -1288,14 +1286,6 @@ Audio
     Gain in dB to apply if the file has no replay gain tags. This option
     is always applied if the replaygain logic is somehow inactive. If this
     is applied, no other replaygain options are applied.
-
-``--balance=<value>``
-    How much left/right channels contribute to the audio. (The implementation
-    of this feature is rather odd. It doesn't change the volumes of each
-    channel, but instead sets up a pan matrix to mix the left and right
-    channels.)
-
-    Deprecated.
 
 ``--audio-delay=<sec>``
     Audio delay in seconds (positive or negative float value). Positive values
@@ -1409,6 +1399,10 @@ Audio
 
     If the channel layout of the media file (i.e. the decoder) and the AO's
     channel layout don't match, mpv will attempt to insert a conversion filter.
+    You may need to change the channel layout of the system mixer to achieve
+    your desired output as mpv does not have control over it. Another
+    work-around for this on some AOs is to use ``--audio-exclusive=yes`` to
+    circumvent the system mixer entirely.
 
     .. admonition:: Warning
 
@@ -2529,6 +2523,7 @@ Window
     value cast to ``intptr_t``. Use with ``--vo=mediacodec_embed`` and
     ``--hwdec=mediacodec`` for direct rendering using MediaCodec, or with
     ``--vo=gpu --gpu-context=android`` (with or without ``--hwdec=mediacodec-copy``).
+    This is currently broken.
 
 ``--no-window-dragging``
     Don't move the window when clicking on it and moving the mouse pointer.
